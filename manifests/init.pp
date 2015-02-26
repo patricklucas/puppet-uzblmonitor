@@ -26,11 +26,11 @@
 class uzblmonitor {
 
   # Remove stock-Ubuntu DM packages
-  package { ["lightdm", "ubuntu-session", "unity", "unity-greeter"]:
+  package { ['lightdm', 'ubuntu-session', 'unity', 'unity-greeter']:
     ensure => purged,
   } ->
   # Install NoDM and Matchbox for kiosk-style display/window management
-  package { ["xserver-xorg", "nodm", "matchbox-window-manager"]:
+  package { ['xserver-xorg', 'nodm', 'matchbox-window-manager']:
     ensure => installed,
   }
 
@@ -42,21 +42,21 @@ class uzblmonitor {
     ensure  => file,
     owner   => monitor,
     group   => monitor,
-    mode    => 0444,
+    mode    => '0444',
     content => '#!/bin/bash\nexec matchbox-window-manager -use_titlebar no\n',
   } ->
   file { '/etc/init/nodm-uzblmonitor.conf':
     ensure => file,
     owner  => root,
     group  => root,
-    mode   => 0444,
+    mode   => '0444',
     source => 'puppet:///modules/uzblmonitor/nodm-uzblmonitor.conf',
   } ->
   file { '/etc/default/nodm-uzblmonitor':
     ensure => file,
     owner  => root,
     group  => root,
-    mode   => 0444,
+    mode   => '0444',
     source => 'puppet:///modules/uzblmonitor/nodm-uzblmonitor.default',
   } ->
   service { 'nodm-uzblmonitor':
@@ -71,14 +71,14 @@ class uzblmonitor {
     ensure => file,
     owner  => root,
     group  => root,
-    mode   => 0755,
+    mode   => '0755',
     source => 'puppet:///modules/uzblmonitor/uzblmonitor',
   } ->
   file { '/etc/init/uzblmonitor.conf':
     ensure => file,
     owner  => root,
     group  => root,
-    mode   => 0444,
+    mode   => '0444',
     source => 'puppet:///modules/uzblmonitor/uzblmonitor.conf',
   } ->
   service { 'uzblmonitor':
