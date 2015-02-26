@@ -1,0 +1,141 @@
+#!/usr/bin/env python
+
+import ConfigParser
+import Queue
+import logging
+import os
+import signal
+import socket
+from subprocess import Popen
+import time
+
+UZBL_CMD = "/usr/bin/uzbl-browser"
+SOCK_FMT = "/tmp/uzbl_socket_{0}"
+CONFIG_FILE = "/etc/uzblmonitor.conf"
+
+log = logging.getLogger("uzblmonitor")
+
+
+class Browser(object):
+
+    p = None
+    sock = None
+    url = None
+
+    def __init__(self):
+        self.stop_queue = Queue.Queue()
+
+    def start(self):
+        log.info("Starting browser")
+
+        self.p = Popen([UZBL_CMD], stderr=open(os.devnull, 'w'))
+        log.info("Started subprocess %d", self.p.pid)
+
+        self.sock = self._wait_for_socket()
+        self.send_initial_cmds()
+        self.reload_config()
+
+    def stop(self):
+        log.info("Stopping browser")
+
+        self.stop_queue.put(True)
+
+    def exit(self):
+        if self.p:
+            self.p.terminate()
+            self.p = None
+
+        if self.sock:
+            self.sock.close()
+            self.sock = None
+
+    def wait_for_stop(self):
+        while True:
+            try:
+                self.stop_queue.get_nowait()
+                break
+            except Queue.Empty:
+                time.sleep(1)
+
+        log.info("Received stop notification; exiting")
+        self.exit()
+
+    def reload_config(self):
+        log.info("Reloading config")
+
+        if not os.path.isfile(CONFIG_FILE):
+            return
+
+        config = ConfigParser.RawConfigParser()
+        config.read(CONFIG_FILE)
+        url = config.get('uzblmonitor', 'url')
+
+        if url != self.url:
+            self.url = url
+            self.update_uzbl()
+
+    def send_cmd(self, cmd):
+        log.debug("Sending cmd: %s", cmd)
+
+        self.sock.settimeout(1)
+
+        data = self.sock.recv(1024)
+        while data:
+            log.debug("Data from uzbl: %r", data)
+            try:
+                data = self.sock.recv(1024)
+            except socket.timeout:
+                break
+
+        self.sock.settimeout(0)
+        self.sock.sendall(cmd + '\n')
+
+    def update_uzbl(self):
+        self.send_cmd("set uri={0}".format(self.url))
+
+    def send_initial_cmds(self):
+        self.send_cmd("set show_status=0")
+        self.send_cmd("set geometry=maximized")
+
+    @property
+    def socket_filename(self):
+        return SOCK_FMT.format(self.p.pid)
+
+    def _wait_for_socket(self):
+        while True:
+            try:
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.connect(self.socket_filename)
+            except socket.error:
+                time.sleep(.5)
+            else:
+                return sock
+
+
+def set_up_signal_handlers(browser):
+    def signal_exit(sig, _):
+        log.info("Got signal %d, exiting.", sig)
+        browser.stop()
+
+    def signal_reload_config(sig, _):
+        log.info("Got signal %d, reloading config.", sig)
+        browser.reload_config()
+
+    log.debug("Setting up signal handlers")
+
+    signal.signal(signal.SIGINT, signal_exit)
+    signal.signal(signal.SIGTERM, signal_exit)
+    signal.signal(signal.SIGUSR1, signal_reload_config)
+
+
+def main():
+    logging.basicConfig(level=logging.INFO)
+
+    browser = Browser()
+    set_up_signal_handlers(browser)
+    browser.start()
+    browser.wait_for_stop()
+
+
+if __name__ == '__main__':
+    main()

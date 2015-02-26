@@ -32,10 +32,6 @@ class uzblmonitor {
   # Install NoDM and Matchbox for kiosk-style display/window management
   package { ["xserver-xorg", "nodm", "matchbox-window-manager"]:
     ensure => installed,
-  } ->
-  # We install our own initscript for NoDM
-  service { 'nodm':
-    ensure => disabled,
   }
 
   user { 'monitor':
@@ -71,8 +67,12 @@ class uzblmonitor {
   package { 'uzbl':
     ensure => installed,
   } ->
-  package { 'uzblmonitor':
-    ensure => installed,
+  file { '/usr/bin/uzblmonitor':
+    ensure => file,
+    owner  => root,
+    group  => root,
+    mode   => 0755,
+    source => 'puppet:///modules/uzblmonitor/uzblmonitor',
   } ->
   file { '/etc/init/uzblmonitor.conf':
     ensure => file,
@@ -80,13 +80,6 @@ class uzblmonitor {
     group  => root,
     mode   => 0444,
     source => 'puppet:///modules/uzblmonitor/uzblmonitor.conf',
-  } ->
-  file { '/etc/uzblmonitor.yaml':
-    ensure  => file,
-    owner   => root,
-    group   => root,
-    mode    => 0444,
-    content => 'url: http://www.yelp.com/yelp-san-francisco',
   } ->
   service { 'uzblmonitor':
     ensure  => running,
