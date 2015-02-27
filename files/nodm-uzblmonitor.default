@@ -13,7 +13,7 @@ NODM_FIRST_VT=7
 NODM_XSESSION=/etc/X11/Xsession
 
 # Options for the X server
-NODM_X_OPTIONS='-nolisten tcp'
+NODM_X_OPTIONS='-nolisten tcp -nocursor'
 
 # If an X session will run for less than this time in seconds, nodm will wait an
 # increasing bit of time before restarting the session.
