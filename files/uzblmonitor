@@ -125,7 +125,7 @@ def set_up_signal_handlers(browser):
 
     signal.signal(signal.SIGINT, signal_exit)
     signal.signal(signal.SIGTERM, signal_exit)
-    signal.signal(signal.SIGUSR1, signal_reload_config)
+    signal.signal(signal.SIGHUP, signal_reload_config)
 
 
 def main():
