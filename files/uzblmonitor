@@ -113,12 +113,19 @@ class Browser(object):
 
     def _start_socket_reader(self):
         while not self.should_stop:
+            data = None
+
             try:
                 data = self.sock.recv(1024)
-                log.debug("Data from uzbl: %r", data)
             except socket.timeout:
                 continue
             except socket.error:
+                time.sleep(.5)
+                continue
+
+            if data:
+                log.debug("Data from uzbl: %r", data)
+            else:
                 time.sleep(.5)
 
 
