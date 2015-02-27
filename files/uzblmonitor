@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
 import ConfigParser
-import Queue
 import logging
 import os
 import signal
 import socket
 from subprocess import Popen
+import threading
 import time
 
 UZBL_CMD = "/usr/bin/uzbl-browser"
@@ -21,24 +21,27 @@ class Browser(object):
     p = None
     sock = None
     url = None
-
-    def __init__(self):
-        self.stop_queue = Queue.Queue()
+    should_stop = False
 
     def start(self):
         log.info("Starting browser")
+
+        self.should_stop = False
 
         self.p = Popen([UZBL_CMD], stderr=open(os.devnull, 'w'))
         log.info("Started subprocess %d", self.p.pid)
 
         self.sock = self._wait_for_socket()
+        self.sock.settimeout(1)
+        threading.Thread(target=self._start_socket_reader).start()
+
         self.send_initial_cmds()
         self.reload_config()
 
     def stop(self):
         log.info("Stopping browser")
 
-        self.stop_queue.put(True)
+        self.should_stop = True
 
     def exit(self):
         if self.p:
@@ -50,12 +53,8 @@ class Browser(object):
             self.sock = None
 
     def wait_for_stop(self):
-        while True:
-            try:
-                self.stop_queue.get_nowait()
-                break
-            except Queue.Empty:
-                time.sleep(1)
+        while not self.should_stop:
+            time.sleep(1)
 
         log.info("Received stop notification; exiting")
         self.exit()
@@ -77,18 +76,14 @@ class Browser(object):
     def send_cmd(self, cmd):
         log.debug("Sending cmd: %s", cmd)
 
-        self.sock.settimeout(1)
-
-        data = self.sock.recv(1024)
-        while data:
-            log.debug("Data from uzbl: %r", data)
+        while not self.should_stop:
             try:
-                data = self.sock.recv(1024)
+                self.sock.sendall(cmd + '\n')
+                return
             except socket.timeout:
-                break
-
-        self.sock.settimeout(0)
-        self.sock.sendall(cmd + '\n')
+                continue
+            except socket.error:
+                time.sleep(.5)
 
     def update_uzbl(self):
         self.send_cmd("set uri={0}".format(self.url))
@@ -102,14 +97,29 @@ class Browser(object):
         return SOCK_FMT.format(self.p.pid)
 
     def _wait_for_socket(self):
+        log.info("Waiting for socket connection")
+
         while True:
             try:
                 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 sock.connect(self.socket_filename)
+                break
             except socket.error:
                 time.sleep(.5)
-            else:
-                return sock
+
+        log.info("Socket connected")
+
+        return sock
+
+    def _start_socket_reader(self):
+        while not self.should_stop:
+            try:
+                data = self.sock.recv(1024)
+                log.debug("Data from uzbl: %r", data)
+            except socket.timeout:
+                continue
+            except socket.error:
+                time.sleep(.5)
 
 
 def set_up_signal_handlers(browser):
@@ -129,7 +139,7 @@ def set_up_signal_handlers(browser):
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
 
     browser = Browser()
     set_up_signal_handlers(browser)
