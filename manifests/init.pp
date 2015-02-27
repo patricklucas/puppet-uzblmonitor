@@ -39,11 +39,11 @@ class uzblmonitor {
     managehome => true,
   } ->
   file { '/home/monitor/.xsession':
-    ensure  => file,
-    owner   => monitor,
-    group   => monitor,
-    mode    => '0444',
-    content => '#!/bin/bash\nexec matchbox-window-manager -use_titlebar no\n',
+    ensure => file,
+    owner  => monitor,
+    group  => monitor,
+    mode   => '0444',
+    source => 'puppet:///modules/uzblmonitor/xsession',
   } ->
   file { '/etc/init/nodm-uzblmonitor.conf':
     ensure => file,
