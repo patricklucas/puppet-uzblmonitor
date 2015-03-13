@@ -69,6 +69,11 @@ class Browser(object):
         config.read(CONFIG_FILE)
         url = config.get('uzblmonitor', 'url')
 
+        if not url:
+            fqdn = socket.getfqdn()
+            html = "<h1 style='font-size: 400%'>{0}</h1>".format(fqdn)
+            url = """javascript:document.write("{0}")""".format(html)
+
         if url != self.url:
             self.url = url
             self.update_uzbl()
