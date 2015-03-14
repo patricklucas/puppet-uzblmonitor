@@ -34,6 +34,10 @@ class uzblmonitor {
     ensure => installed,
   }
 
+  package { 'browser-plugin-gnash':
+    ensure => installed,
+  }
+
   user { 'monitor':
     ensure     => present,
     managehome => true,
