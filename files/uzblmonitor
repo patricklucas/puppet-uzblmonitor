@@ -6,11 +6,10 @@ import os
 import signal
 import socket
 from subprocess import Popen
+import sys
 import threading
 import time
 
-UZBL_CMD = "/usr/bin/uzbl-browser"
-SOCK_FMT = "/tmp/uzbl_socket_{0}"
 CONFIG_FILE = "/etc/uzblmonitor.conf"
 
 log = logging.getLogger("uzblmonitor")
@@ -28,15 +27,8 @@ class Browser(object):
 
         self.should_stop = False
 
-        self.p = Popen([UZBL_CMD], stderr=open(os.devnull, 'w'))
+        self.p = Popen(self.browser_command, stderr=open(os.devnull, 'w'))
         log.info("Started subprocess %d", self.p.pid)
-
-        self.sock = self._wait_for_socket()
-        self.sock.settimeout(1)
-        threading.Thread(target=self._start_socket_reader).start()
-
-        self.send_initial_cmds()
-        self.reload_config()
 
     def stop(self):
         log.info("Stopping browser")
@@ -52,6 +44,16 @@ class Browser(object):
             self.sock.close()
             self.sock = None
 
+    def read_config(self):
+        config = ConfigParser.RawConfigParser()
+        config.read(CONFIG_FILE)
+        return config
+
+    def reload_config(self):
+        log.info("Reloading config")
+        self.exit()
+        self.start()
+
     def wait_for_stop(self):
         while not self.should_stop:
             time.sleep(1)
@@ -59,14 +61,28 @@ class Browser(object):
         log.info("Received stop notification; exiting")
         self.exit()
 
+
+class Uzbl(Browser):
+    browser_command = ["/usr/bin/uzbl-browser"]
+    socket_format = "/tmp/uzbl_socket_{0}"
+
+    def start(self):
+        super(Uzbl, self).start()
+
+        self.sock = self._wait_for_socket()
+        self.sock.settimeout(1)
+        threading.Thread(target=self._start_socket_reader).start()
+
+        self.send_initial_cmds()
+        self.reload_config()
+
     def reload_config(self):
         log.info("Reloading config")
 
         if not os.path.isfile(CONFIG_FILE):
             return
 
-        config = ConfigParser.RawConfigParser()
-        config.read(CONFIG_FILE)
+        config = self.read_config()
         url = config.get('uzblmonitor', 'url')
 
         if not url:
@@ -99,7 +115,7 @@ class Browser(object):
 
     @property
     def socket_filename(self):
-        return SOCK_FMT.format(self.p.pid)
+        return self.socket_format.format(self.p.pid)
 
     def _wait_for_socket(self):
         log.info("Waiting for socket connection")
@@ -134,6 +150,14 @@ class Browser(object):
                 time.sleep(.5)
 
 
+class LuaKit(Browser):
+    @property
+    def browser_command(self):
+        config = self.read_config()
+        url = config.get('uzblmonitor', 'url')
+        return ["/usr/bin/luakit", url]
+
+
 def set_up_signal_handlers(browser):
     def signal_exit(sig, _):
         log.info("Got signal %d, exiting.", sig)
@@ -153,7 +177,12 @@ def set_up_signal_handlers(browser):
 def main():
     logging.basicConfig(level=logging.DEBUG)
 
-    browser = Browser()
+    BrowserClass = {
+        "uzbl": Uzbl,
+        "luakit": LuaKit,
+    }[sys.argv[1] if len(sys.argv) > 1 else "uzbl"]
+
+    browser = BrowserClass()
     set_up_signal_handlers(browser)
     browser.start()
     browser.wait_for_stop()
