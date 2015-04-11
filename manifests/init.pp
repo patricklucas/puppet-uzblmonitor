@@ -23,7 +23,11 @@
 #  # ...
 #  }
 #
-class uzblmonitor {
+class uzblmonitor(
+  $browser = 'uzbl'
+) {
+
+  $quoted_browser = shellquote($browser)
 
   # Remove stock-Ubuntu DM packages
   package { ['lightdm', 'ubuntu-session', 'unity', 'unity-greeter']:
@@ -77,6 +81,9 @@ class uzblmonitor {
     group  => root,
     mode   => '0755',
     source => 'puppet:///modules/uzblmonitor/uzblmonitor',
+  } ->
+  file { '/etc/default/uzblmonitor':
+    content => "BROWSER=${quoted_browser}"
   } ->
   file { '/etc/init/uzblmonitor.conf':
     ensure => file,
