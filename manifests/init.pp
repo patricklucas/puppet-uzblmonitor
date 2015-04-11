@@ -83,7 +83,8 @@ class uzblmonitor(
     source => 'puppet:///modules/uzblmonitor/uzblmonitor',
   } ->
   file { '/etc/default/uzblmonitor':
-    content => "BROWSER=${quoted_browser}"
+    content => "BROWSER=${quoted_browser}",
+    notify => Service['uzblmonitor'],
   } ->
   file { '/etc/init/uzblmonitor.conf':
     ensure => file,
