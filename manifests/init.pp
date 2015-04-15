@@ -99,4 +99,9 @@ class uzblmonitor(
     require => Service['nodm-uzblmonitor'],
   }
 
+  if $browser == 'luakit' {
+    file { '/etc/xdg/luakit/uzblmonitor.lua':
+      source => 'puppet:///modules/uzblmonitor/uzblmonitor.lua',
+    }
+  }
 }

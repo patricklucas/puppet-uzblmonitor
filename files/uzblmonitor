@@ -157,7 +157,7 @@ class LuaKit(Browser):
     def browser_command(self):
         config = self.read_config()
         url = config.get('uzblmonitor', 'url')
-        return ["/usr/bin/luakit", insert_basic_auth(url)]
+        return ["/usr/bin/luakit", "-c", "/etc/xdg/luakit/uzblmonitor.lua", insert_basic_auth(url)]
 
 
 def insert_basic_auth(url, filename="/etc/uzblmonitor-auth.json"):
