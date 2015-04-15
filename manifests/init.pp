@@ -72,7 +72,8 @@ class uzblmonitor(
     require => Package['nodm'],
   }
 
-  package { 'uzbl':
+  package { 'uzblmonitor_browser_package':
+    name => $browser,
     ensure => installed,
   } ->
   file { '/usr/bin/uzblmonitor':
