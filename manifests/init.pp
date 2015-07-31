@@ -45,6 +45,7 @@ class uzblmonitor(
   user { 'monitor':
     ensure     => present,
     managehome => true,
+    groups     => ['audio']
   } ->
   file { '/home/monitor/.xsession':
     ensure => file,
