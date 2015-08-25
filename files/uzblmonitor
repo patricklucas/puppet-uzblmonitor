@@ -204,7 +204,7 @@ class Chrome(Browser):
 
         return (
             [
-                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
                 "--user-data-dir=%s" % user_data_dir,
                 "--app=%s" % insert_basic_auth(url),
             ] + userscript_args,
@@ -263,7 +263,7 @@ def parse_userscript_metadata(f):
     for line in lines[1:]:
         if re.match(r"// ==/UserScript==", line):
             break
-        match = re.match(r"// @(\w+)\s+(.*)", line)
+        match = re.match(r"// @(\S+)\s+(.*)", line)
         retval.setdefault(match.group(1), []).append(match.group(2))
 
     return retval
