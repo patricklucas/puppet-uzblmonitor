@@ -75,7 +75,7 @@ class uzblmonitor(
 
   package { 'uzblmonitor_browser_package':
     name => $browser,
-    ensure => installed,
+    ensure => latest,
   } ->
   file { '/usr/bin/uzblmonitor':
     ensure => file,

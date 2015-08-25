@@ -306,7 +306,7 @@ def main():
     BrowserClass = {
         "uzbl": Uzbl,
         "luakit": LuaKit,
-        "chrome": Chrome,
+        "google-chrome-stable": Chrome,
     }[sys.argv[1] if len(sys.argv) > 1 else "uzbl"]
 
     browser = BrowserClass()
