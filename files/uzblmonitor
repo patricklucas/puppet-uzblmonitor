@@ -212,21 +212,24 @@ class Chrome(Browser):
         )
 
     def load_userscripts(self, config, tempdir):
-        target_dir = os.path.join(tempdir, "userscripts")
-        os.mkdir(target_dir)
+        extension_dir = os.path.join(tempdir, "userscripts")
+        os.mkdir(extension_dir)
         try:
             script_source = config.get('uzblmonitor', 'user_scripts')
         except ConfigParser.NoOptionError:
             return []
 
-        retval = []
+        manifest_data = {
+            "manifest_version": 2,
+            "name": ("uzblmonitor user scripts"),
+            "content_scripts": [],
+            "version": "1",
+        }
+
         for filename in os.listdir(script_source):
             source_path = os.path.join(script_source, filename)
             if os.path.isfile(source_path) and filename.endswith(".user.js"):
-                extension_dir = os.path.join(target_dir, filename[:-8])
-                retval.append("--load-extension=%s" % extension_dir)
-                os.mkdir(extension_dir)
-                userscript_path = os.path.join(extension_dir, "script.js")
+                userscript_path = os.path.join(extension_dir, filename)
                 shutil.copyfile(
                     src=source_path,
                     dst=userscript_path,
@@ -234,25 +237,19 @@ class Chrome(Browser):
 
                 with open(userscript_path) as userscript:
                     metadata = parse_userscript_metadata(userscript)
+                manifest_data['content_scripts'].append({
+                    "exclude_globs": [],
+                    "exclude_matches": [],
+                    "include_globs": metadata['include'],
+                    "js": [filename],
+                    "matches": ["http://*/*", "https://*/*"],
+                    "run_at": "document_idle"
+                })
 
-                with open(os.path.join(extension_dir, "manifest.json"), 'w') as manifest:
-                    manifest_data = {
-                        "manifest_version": 2,
-                        "name": ("converted from %s" % filename),
-                        "content_scripts": [{
-                            "exclude_globs": [],
-                            "exclude_matches": [],
-                            "include_globs": metadata['include'],
-                            "js": ["script.js"],
-                            "matches": ["http://*/*", "https://*/*"],
-                            "run_at": "document_idle"
-                        }],
-                        "version": "1",
-                    }
+        with open(os.path.join(extension_dir, "manifest.json"), 'w') as manifest:
+            json.dump(manifest_data, manifest)
 
-                    json.dump(manifest_data, manifest)
-
-        return retval
+        return ["--load-extension=%s" % extension_dir]
 
 
 def parse_userscript_metadata(f):
