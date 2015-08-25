@@ -4,6 +4,9 @@ import ConfigParser
 import json
 import logging
 import os
+import os.path
+import re
+import shutil
 import signal
 import socket
 from subprocess import Popen
@@ -11,6 +14,7 @@ import sys
 import threading
 import time
 import urlparse
+import tempfile
 
 CONFIG_FILE = "/etc/uzblmonitor.conf"
 
@@ -29,7 +33,9 @@ class Browser(object):
 
         self.should_stop = False
 
-        self.p = Popen(self.browser_command, stderr=open(os.devnull, 'w'))
+        cmd, env = self.browser_command_env
+
+        self.p = Popen(cmd, env=dict(os.environ, **env), stderr=open(os.devnull, 'w'))
         log.info("Started subprocess %d", self.p.pid)
 
     def stop(self):
@@ -47,7 +53,7 @@ class Browser(object):
             self.sock = None
 
     def read_config(self):
-        config = ConfigParser.RawConfigParser()
+        config = ConfigParser.RawConfigParser(allow_no_value=True)
         config.read(CONFIG_FILE)
         return config
 
@@ -65,7 +71,7 @@ class Browser(object):
 
 
 class Uzbl(Browser):
-    browser_command = ["/usr/bin/uzbl-browser"]
+    browser_command_env = (["/usr/bin/uzbl-browser"], {})
     socket_format = "/tmp/uzbl_socket_{0}"
 
     def start(self):
@@ -154,10 +160,113 @@ class Uzbl(Browser):
 
 class LuaKit(Browser):
     @property
-    def browser_command(self):
+    def browser_command_env(self):
         config = self.read_config()
         url = config.get('uzblmonitor', 'url')
-        return ["/usr/bin/luakit", "-c", "/etc/xdg/luakit/uzblmonitor.lua", insert_basic_auth(url)]
+
+        tempdir = tempfile.mkdtemp()
+        self.load_userscripts(config, tempdir)
+
+        print "tempdir %s" % tempdir
+        return (
+            ["/usr/bin/luakit", "-c", "/etc/xdg/luakit/uzblmonitor.lua", insert_basic_auth(url)],
+            {
+                "XDG_DATA_HOME": tempdir,
+            }
+        )
+
+    def load_userscripts(self, config, tempdir):
+        target_dir = os.path.join(tempdir, "luakit", "scripts")
+        os.makedirs(target_dir)
+        try:
+            script_source = config.get('uzblmonitor', 'user_scripts')
+        except ConfigParser.NoOptionError:
+            return
+        for filename in os.listdir(script_source):
+            source_path = os.path.join(script_source, filename)
+            if os.path.isfile(source_path) and filename.endswith(".user.js"):
+                shutil.copyfile(
+                    src=source_path,
+                    dst=os.path.join(target_dir, filename)
+                )
+
+
+class Chrome(Browser):
+    @property
+    def browser_command_env(self):
+        config = self.read_config()
+        url = config.get('uzblmonitor', 'url')
+
+        tempdir = tempfile.mkdtemp()
+        user_data_dir = os.path.join(tempdir, 'user_data')
+        os.mkdir(user_data_dir)
+        userscript_args = self.load_userscripts(config, tempdir)
+
+        return (
+            [
+                "/usr/bin/google-chrome",
+                "--user-data-dir=%s" % user_data_dir,
+                "--app=%s" % insert_basic_auth(url),
+            ] + userscript_args,
+            {}
+        )
+
+    def load_userscripts(self, config, tempdir):
+        target_dir = os.path.join(tempdir, "userscripts")
+        os.mkdir(target_dir)
+        try:
+            script_source = config.get('uzblmonitor', 'user_scripts')
+        except ConfigParser.NoOptionError:
+            return []
+
+        retval = []
+        for filename in os.listdir(script_source):
+            source_path = os.path.join(script_source, filename)
+            if os.path.isfile(source_path) and filename.endswith(".user.js"):
+                extension_dir = os.path.join(target_dir, filename[:-8])
+                retval.append("--load-extension=%s" % extension_dir)
+                os.mkdir(extension_dir)
+                userscript_path = os.path.join(extension_dir, "script.js")
+                shutil.copyfile(
+                    src=source_path,
+                    dst=userscript_path,
+                )
+
+                with open(userscript_path) as userscript:
+                    metadata = parse_userscript_metadata(userscript)
+
+                with open(os.path.join(extension_dir, "manifest.json"), 'w') as manifest:
+                    manifest_data = {
+                        "manifest_version": 2,
+                        "name": ("converted from %s" % filename),
+                        "content_scripts": [{
+                            "exclude_globs": [],
+                            "exclude_matches": [],
+                            "include_globs": metadata['include'],
+                            "js": ["script.js"],
+                            "matches": ["http://*/*", "https://*/*"],
+                            "run_at": "document_idle"
+                        }],
+                        "version": "1",
+                    }
+
+                    json.dump(manifest_data, manifest)
+
+        return retval
+
+
+def parse_userscript_metadata(f):
+    lines = f.readlines()
+    if not re.match(r"^// ==UserScript==", lines[0]):
+        raise ValueError("user script does not start with `// ==UserScript==`")
+    retval = {}
+    for line in lines[1:]:
+        if re.match(r"// ==/UserScript==", line):
+            break
+        match = re.match(r"// @(\w+)\s+(.*)", line)
+        retval.setdefault(match.group(1), []).append(match.group(2))
+
+    return retval
 
 
 def insert_basic_auth(url, filename="/etc/uzblmonitor-auth.json"):
@@ -197,6 +306,7 @@ def main():
     BrowserClass = {
         "uzbl": Uzbl,
         "luakit": LuaKit,
+        "chrome": Chrome,
     }[sys.argv[1] if len(sys.argv) > 1 else "uzbl"]
 
     browser = BrowserClass()
