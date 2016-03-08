@@ -34,7 +34,7 @@ class uzblmonitor(
     ensure => purged,
   } ->
   # Install NoDM and Matchbox for kiosk-style display/window management
-  package { ['xserver-xorg', 'nodm', 'matchbox-window-manager']:
+  package { ['xserver-xorg', 'xserver-xorg-core', 'nodm', 'matchbox-window-manager']:
     ensure => latest,
   }
 
