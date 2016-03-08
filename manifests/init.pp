@@ -35,11 +35,11 @@ class uzblmonitor(
   } ->
   # Install NoDM and Matchbox for kiosk-style display/window management
   package { ['xserver-xorg', 'nodm', 'matchbox-window-manager']:
-    ensure => installed,
+    ensure => latest,
   }
 
   package { 'browser-plugin-gnash':
-    ensure => installed,
+    ensure => latest,
   }
 
   user { 'monitor':
