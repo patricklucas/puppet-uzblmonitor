@@ -42,6 +42,10 @@ class uzblmonitor(
     ensure => latest,
   }
 
+  package { 'unclutter':
+    ensure => latest,
+  }
+
   user { 'monitor':
     ensure     => present,
     managehome => true,
