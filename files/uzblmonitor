@@ -19,7 +19,7 @@ import urlparse
 import tempfile
 
 CONFIG_FILE = "/etc/uzblmonitor.conf"
-
+STATE_FILE = '/etc/uzblmonitor-data.json'
 log = logging.getLogger("uzblmonitor")
 
 
@@ -232,7 +232,7 @@ def parse_layout(views, state, x, y, width, height):
 def main():
     logging.basicConfig(level=logging.DEBUG)
 
-    with open('/etc/uzblmonitor_data.conf') as f:
+    with open(STATE_FILE) as f:
         state = json.loads(f.read())
 
     views = []
