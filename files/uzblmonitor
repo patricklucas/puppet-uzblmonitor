@@ -52,7 +52,10 @@ class ViewAdapter(object):
         Popen(
             ['matchbox-window-manager', '-use_titlebar', 'no'],
             env=dict(os.environ, DISPLAY=":%s" % display)
-        ),
+        )
+
+        # Give the window manager some time to actually start
+        time.sleep(0.1)
         self.view.start(display)
 
 
