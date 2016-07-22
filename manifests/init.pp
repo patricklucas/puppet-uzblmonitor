@@ -24,7 +24,7 @@
 #  }
 #
 class uzblmonitor(
-  $browser = 'uzbl'
+  $browser = 'google-chrome-stable'
 ) {
 
   $quoted_browser = shellquote($browser)
