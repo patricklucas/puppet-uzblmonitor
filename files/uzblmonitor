@@ -27,6 +27,14 @@ def geometry_string(x, y, width, height):
     return '%dx%d+%d+%d' % (width, height, x, y)
 
 
+def parse_geometry_string(geom_str):
+    """Parse a geometry string and return x, y, width, height."""
+    width, rest = geom_str.split('x')
+    height, x, y = rest.split('+')
+
+    return int(x), int(y), int(width), int(height)
+
+
 class ViewAdapter(object):
 
     def __init__(self, state, x, y, width, height):
@@ -239,7 +247,12 @@ def main():
         state = json.loads(f.read())
 
     views = []
-    parse_layout(views, state, 0, 0, 1920, 1080)
+
+    xwininfo_output = subprocess.check_output(['xwininfo', '-root'])
+    (geom_str,) = [l.split(' ')[-1] for l in xwininfo_output.split('\n') if '-geometry ' in l]
+    x, y, width, height = parse_geometry_string(geom_str)
+
+    parse_layout(views, state, x, y, width, height)
     for view in views:
         view.render()
 
