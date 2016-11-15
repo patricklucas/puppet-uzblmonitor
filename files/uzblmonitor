@@ -51,15 +51,15 @@ class ViewAdapter(object):
     def start(self, display):
         return Exception("Your provider should implement this")
 
-    def render(self):
-        display = random.randint(1, 1000)
+    def render(self, display):
+	if display != 0:
+            cmd = ['Xnest', ':%d' % display, '-s', '0,', '-retro', '-geometry',
+                       self.geometry_string]
+            Popen(cmd, env=dict(os.environ, DISPLAY=":0"))
 
-        cmd = ['Xnest', ':%d' % display, '-s', '0,', '-retro', '-geometry',
-                   self.geometry_string]
-        Popen(cmd, env=dict(os.environ, DISPLAY=":0"))
         Popen(
             ['matchbox-window-manager', '-use_titlebar', 'no'],
-            env=dict(os.environ, DISPLAY=":%s" % display)
+            env=dict(os.environ, DISPLAY=":%d" % display)
         )
 
         # Give the window manager some time to actually start
@@ -229,7 +229,6 @@ def parse_layout(views, state, x, y, width, height):
 
     if state['mode'] == 'horizontal':
         x_offset = int(float(state['value'])*width)
-        print "horiz"
         parse_layout(views, state['children'][0], x, y, x_offset, height)
         parse_layout(views, state['children'][1], x+x_offset, y, width-x_offset, height)
     elif state['mode'] == 'vertical':
@@ -253,8 +252,12 @@ def main():
     x, y, width, height = parse_geometry_string(geom_str)
 
     parse_layout(views, state, x, y, width, height)
+    display=0
     for view in views:
-        view.render()
+	# If there is no split, we don't need nested X server and can enable fullscreen GPU OpenGL support
+        if len(views) != 1:
+	    display += 11
+        view.render(display)
 
     while True:
         time.sleep(5)
