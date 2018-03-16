@@ -246,7 +246,7 @@ def set_up_signal_handlers(browser):
 def parse_layout(views, state, x, y, width, height, broadcast=None):
 
     if broadcast:
-        views.append(ViewAdapter(state={'mode': 'terminal', 'value': 'DISPLAY=:0 python /nail/home/btrump/tkinter.py \'{0}\''.format(broadcast)}, x=0, y=0, width=width, height=BROADCAST_HEIGHT))
+        views.append(ViewAdapter(state={'mode': 'terminal', 'value': 'DISPLAY=:0 textscroll \'{0}\''.format(broadcast)}, x=0, y=0, width=width, height=BROADCAST_HEIGHT))
 
     if state['mode'] == 'horizontal':
         x_offset = int(float(state['value'])*width)
@@ -287,7 +287,7 @@ def main():
     display = 0
     for view in views:
         # If there is no split, we don't need nested X server and can enable fullscreen GPU OpenGL support
-        if len(views) != 1 or emergency_broadcast:
+        if len(views) != 1 or broadcast:
             display += 11
         view.render(display)
 
