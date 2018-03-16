@@ -17,6 +17,7 @@ import tempfile
 
 CONFIG_FILE = "/etc/uzblmonitor.conf"
 STATE_FILE = '/etc/uzblmonitor-data.json'
+BROADCAST_HEIGHT = 100
 log = logging.getLogger("uzblmonitor")
 
 
@@ -242,7 +243,10 @@ def set_up_signal_handlers(browser):
     signal.signal(signal.SIGHUP, signal_reload_config)
 
 
-def parse_layout(views, state, x, y, width, height):
+def parse_layout(views, state, x, y, width, height, broadcast=None):
+
+    if broadcast:
+        views.append(ViewAdapter(state={'mode': 'terminal', 'value': 'DISPLAY=:0 python /nail/home/btrump/tkinter.py \'{0}\''.format(broadcast)}, x=0, y=0, width=width, height=BROADCAST_HEIGHT))
 
     if state['mode'] == 'horizontal':
         x_offset = int(float(state['value'])*width)
@@ -254,6 +258,12 @@ def parse_layout(views, state, x, y, width, height):
         parse_layout(views, state['children'][1], x, y+y_offset, width, height-y_offset)
     else:
         views.append(ViewAdapter(state, x, y, width, height))
+
+
+def get_emergency_broadcast(broadcast_file='/etc/uzblmonitor-broadcast.json'):
+    with open(broadcast_file) as f:
+        broadcast = f.read().strip()
+    return broadcast
 
 
 def main():
@@ -268,11 +278,16 @@ def main():
     (geom_str,) = [l.split(' ')[-1] for l in xwininfo_output.split('\n') if '-geometry ' in l]
     x, y, width, height = parse_geometry_string(geom_str)
 
-    parse_layout(views, state, x, y, width, height)
+    broadcast = get_emergency_broadcast()
+    if broadcast:
+        y += BROADCAST_HEIGHT
+        height -= BROADCAST_HEIGHT
+
+    parse_layout(views, state, x, y, width, height, broadcast)
     display = 0
     for view in views:
         # If there is no split, we don't need nested X server and can enable fullscreen GPU OpenGL support
-        if len(views) != 1:
+        if len(views) != 1 or emergency_broadcast:
             display += 11
         view.render(display)
 
