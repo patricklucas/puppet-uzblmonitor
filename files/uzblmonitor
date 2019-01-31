@@ -136,6 +136,7 @@ class Chrome():
                 "/usr/bin/google-chrome-stable",
                 "--no-default-browser-check",
                 "--no-first-run",
+                "--autoplay-policy=no-user-gesture-required",
                 "--user-data-dir=%s" % user_data_dir,
                 "--app=%s" % insert_basic_auth(self.url),
             ] + userscript_args,
