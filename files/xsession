@@ -1,4 +1,6 @@
 #!/bin/bash
 xset -dpms
 xset s off
+# Force UHD (usually native panel resolution) instead of 4k
+xrandr --current |grep -q 'connected 4096x2160' && xrandr --output $(xrandr --current |grep 'connected 4096x2160' |cut -d ' ' -f1) --mode 3840x2160
 exec sleep infinity
