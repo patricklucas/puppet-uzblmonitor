@@ -22,6 +22,6 @@ if xrandr --current |grep -q -E '(3840x2160|4096x2160)' ; then
 fi
 
 #Emit a screen ready event to upstart
-/sbin/initctl -q emit screen-ready
+[ -x /sbin/initctl ] && /sbin/initctl -q emit screen-ready
 
 exec sleep infinity
