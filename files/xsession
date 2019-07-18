@@ -1,6 +1,8 @@
 #!/bin/bash
 
-export DISPLAY=":0"
+# If you run this manually you may want to type the following line first:
+# export DISPLAY=":0"
+
 # Disable power management on the interface
 xset -dpms
 # Disable screen saver blanking
@@ -9,6 +11,8 @@ xset s off
 
 connected_port=$(xrandr --current 2>/dev/null |grep ' connected [0-9]*x[0-9]' |cut -d ' ' -f1)
 
+# Refresh the list of supported modes as sometimes they don't show up
+xrandr --output $connected_port --auto
 # If the TV supports UHD resolution, then we try to enable it
 if xrandr --current |grep -q -E '(3840x2160|4096x2160)' ; then
     # First with Sony 4k TV we need to disable this interface
@@ -16,5 +20,8 @@ if xrandr --current |grep -q -E '(3840x2160|4096x2160)' ; then
     # Then we enable it with a refresh rate of 24, which is enough for our use case
     xrandr --output $connected_port --mode 3840x2160 --rate 24
 fi
+
+#Emit a screen ready event to upstart
+/sbin/initctl -q emit screen-ready
 
 exec sleep infinity
