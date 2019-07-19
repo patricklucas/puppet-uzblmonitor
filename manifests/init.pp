@@ -23,24 +23,34 @@
 #  # ...
 #  }
 #
-class uzblmonitor {
+class uzblmonitor(
+  $browser = 'google-chrome-stable'
+) {
+
+  $quoted_browser = shellquote($browser)
 
   # Remove stock-Ubuntu DM packages
   package { ['lightdm', 'ubuntu-session', 'unity', 'unity-greeter']:
     ensure => purged,
   } ->
   # Install NoDM and Matchbox for kiosk-style display/window management
-  package { ['xserver-xorg', 'nodm', 'matchbox-window-manager']:
-    ensure => installed,
+  # x11-utils for resolution detection in the python script
+  package { ['xserver-xorg', 'xserver-xorg-core', 'nodm', 'matchbox-window-manager', 'xnest', 'xterm', 'x11-utils']:
+    ensure => latest,
   }
 
   package { 'browser-plugin-gnash':
-    ensure => installed,
+    ensure => latest,
+  }
+
+  package { 'unclutter':
+    ensure => latest,
   }
 
   user { 'monitor':
     ensure     => present,
     managehome => true,
+    groups     => ['audio', 'video']
   } ->
   file { '/home/monitor/.xsession':
     ensure => file,
@@ -68,8 +78,9 @@ class uzblmonitor {
     require => Package['nodm'],
   }
 
-  package { 'uzbl':
-    ensure => installed,
+  package { 'uzblmonitor_browser_package':
+    name => $browser,
+    ensure => latest,
   } ->
   file { '/usr/bin/uzblmonitor':
     ensure => file,
@@ -77,6 +88,10 @@ class uzblmonitor {
     group  => root,
     mode   => '0755',
     source => 'puppet:///modules/uzblmonitor/uzblmonitor',
+  } ->
+  file { '/etc/default/uzblmonitor':
+    content => "BROWSER=${quoted_browser}",
+    notify => Service['uzblmonitor'],
   } ->
   file { '/etc/init/uzblmonitor.conf':
     ensure => file,
@@ -90,4 +105,9 @@ class uzblmonitor {
     require => Service['nodm-uzblmonitor'],
   }
 
+  if $browser == 'luakit' {
+    file { '/etc/xdg/luakit/uzblmonitor.lua':
+      source => 'puppet:///modules/uzblmonitor/uzblmonitor.lua',
+    }
+  }
 }

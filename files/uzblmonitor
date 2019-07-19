@@ -1,42 +1,101 @@
 #!/usr/bin/env python
 
 import ConfigParser
+import json
 import logging
+import math
 import os
+import os.path
+import re
+import shutil
 import signal
-import socket
+import subprocess
 from subprocess import Popen
-import threading
 import time
+import urlparse
+import tempfile
 
-UZBL_CMD = "/usr/bin/uzbl-browser"
-SOCK_FMT = "/tmp/uzbl_socket_{0}"
 CONFIG_FILE = "/etc/uzblmonitor.conf"
-
+STATE_FILE = '/etc/uzblmonitor-data.json'
+BROADCAST_HEIGHT = 100
 log = logging.getLogger("uzblmonitor")
 
 
-class Browser(object):
+def geometry_string(x, y, width, height):
+    return '%dx%d+%d+%d' % (width, height, x, y)
 
-    p = None
-    sock = None
-    url = None
-    should_stop = False
 
-    def start(self):
-        log.info("Starting browser")
+def parse_geometry_string(geom_str):
+    """Parse a geometry string and return x, y, width, height."""
+    width, rest = geom_str.split('x')
+    height, x, y = rest.split('+')
+
+    return int(x), int(y), int(width), int(height)
+
+
+class ViewAdapter(object):
+
+    def __init__(self, state, x, y, width, height):
+        self.view = None
+        self.geometry_string = geometry_string(x, y, width, height)
+
+        if state['mode'] == 'url':
+            self.view = Chrome(*(state['value'].split(' ')))  # hacky way of not having to add a new field to the UI.
+        elif state['mode'] == 'terminal':
+            self.view = Terminal(state['value'])
+        else:
+            raise Exception("Unknown mode")
+
+    def start(self, display):
+        return Exception("Your provider should implement this")
+
+    def render(self, display):
+        if display != 0:
+            cmd = ['Xnest', ':%d' % display, '-s', '0,', '-retro', '-geometry', self.geometry_string]
+            Popen(cmd, env=dict(os.environ, DISPLAY=":0"))
+
+        Popen(
+            ['matchbox-window-manager', '-use_titlebar', 'no'],
+            env=dict(os.environ, DISPLAY=":%d" % display)
+        )
+
+        # Give the window manager some time to actually start
+        time.sleep(0.1)
+        self.view.start(display)
+
+
+class Terminal():
+
+    def __init__(self, cmd):
+        self.pid = None
+        self.cmd = cmd
+
+    def start(self, display=":0"):
+        cmd = ["xterm", "-rv", "-hold", "-e", "bash", "-c", self.cmd]
+        self.pid = Popen(
+            cmd,
+            env=dict(os.environ, DISPLAY=":%s" % display),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+
+class Chrome():
+
+    def __init__(self, url, zoom=1.0):
+        self.url = url
+        self.zoom = zoom
+
+    def start(self, display=":0"):
+        log.info("Starting browser on display %s" % display)
 
         self.should_stop = False
 
-        self.p = Popen([UZBL_CMD], stderr=open(os.devnull, 'w'))
+        cmd, env = self.browser_command_env
+        print cmd
+
+        self.p = Popen(cmd, env=dict(os.environ, DISPLAY=":%s" % display, **env), stderr=open(os.devnull, 'w'))
         log.info("Started subprocess %d", self.p.pid)
-
-        self.sock = self._wait_for_socket()
-        self.sock.settimeout(1)
-        threading.Thread(target=self._start_socket_reader).start()
-
-        self.send_initial_cmds()
-        self.reload_config()
 
     def stop(self):
         log.info("Stopping browser")
@@ -52,86 +111,125 @@ class Browser(object):
             self.sock.close()
             self.sock = None
 
-    def wait_for_stop(self):
-        while not self.should_stop:
-            time.sleep(1)
-
-        log.info("Received stop notification; exiting")
-        self.exit()
+    def read_config(self):
+        config = ConfigParser.RawConfigParser(allow_no_value=True)
+        config.read(CONFIG_FILE)
+        return config
 
     def reload_config(self):
         log.info("Reloading config")
-
-        if not os.path.isfile(CONFIG_FILE):
-            return
-
-        config = ConfigParser.RawConfigParser()
-        config.read(CONFIG_FILE)
-        url = config.get('uzblmonitor', 'url')
-
-        if not url:
-            fqdn = socket.getfqdn()
-            html = "<h1 style='font-size: 400%'>{0}</h1>".format(fqdn)
-            url = """javascript:document.write("{0}")""".format(html)
-
-        if url != self.url:
-            self.url = url
-            self.update_uzbl()
-
-    def send_cmd(self, cmd):
-        log.debug("Sending cmd: %s", cmd)
-
-        while not self.should_stop:
-            try:
-                self.sock.sendall(cmd + '\n')
-                return
-            except socket.timeout:
-                continue
-            except socket.error:
-                time.sleep(.5)
-
-    def update_uzbl(self):
-        self.send_cmd("set uri={0}".format(self.url))
-
-    def send_initial_cmds(self):
-        self.send_cmd("set show_status=0")
-        self.send_cmd("set geometry=maximized")
+        self.exit()
+        self.start()
 
     @property
-    def socket_filename(self):
-        return SOCK_FMT.format(self.p.pid)
+    def browser_command_env(self):
+        config = self.read_config()
 
-    def _wait_for_socket(self):
-        log.info("Waiting for socket connection")
+        tempdir = tempfile.mkdtemp()
+        user_data_dir = os.path.join(tempdir, 'user_data')
+        os.mkdir(user_data_dir)
+        self.set_zoom(user_data_dir)
+        userscript_args = self.load_userscripts(config, tempdir)
 
-        while True:
-            try:
-                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                sock.connect(self.socket_filename)
-                break
-            except socket.error:
-                time.sleep(.5)
+        return (
+            [
+                "/usr/bin/google-chrome-stable",
+                "--no-default-browser-check",
+                "--no-first-run",
+                "--autoplay-policy=no-user-gesture-required",
+                "--user-data-dir=%s" % user_data_dir,
+                "--app=%s" % insert_basic_auth(self.url),
+            ] + userscript_args,
+            {}
+        )
 
-        log.info("Socket connected")
+    def set_zoom(self, user_data_dir):
+        prefs_filename = os.path.join(user_data_dir, "Default", "Preferences")
+        os.mkdir(os.path.join(user_data_dir, "Default"))
+        with open(prefs_filename, "w") as f:
+            json.dump(
+                {
+                    "partition": {
+                        "default_zoom_level": {
+                            "0": math.log(float(self.zoom)) / math.log(1.20),
+                        }
+                    }
+                },
+                f
+            )
 
-        return sock
+    def load_userscripts(self, config, tempdir):
+        extension_dir = os.path.join(tempdir, "userscripts")
+        os.mkdir(extension_dir)
+        try:
+            script_source = config.get('uzblmonitor', 'user_scripts')
+        except ConfigParser.NoOptionError:
+            return []
 
-    def _start_socket_reader(self):
-        while not self.should_stop:
-            data = None
+        manifest_data = {
+            "manifest_version": 2,
+            "name": ("uzblmonitor user scripts"),
+            "content_scripts": [],
+            "version": "1",
+        }
 
-            try:
-                data = self.sock.recv(1024)
-            except socket.timeout:
-                continue
-            except socket.error:
-                time.sleep(.5)
-                continue
+        for filename in os.listdir(script_source):
+            source_path = os.path.join(script_source, filename)
+            if os.path.isfile(source_path) and filename.endswith(".user.js"):
+                userscript_path = os.path.join(extension_dir, filename)
+                shutil.copyfile(
+                    src=source_path,
+                    dst=userscript_path,
+                )
 
-            if data:
-                log.debug("Data from uzbl: %r", data)
-            else:
-                time.sleep(.5)
+                with open(userscript_path) as userscript:
+                    metadata = parse_userscript_metadata(userscript)
+                manifest_data['content_scripts'].append({
+                    "exclude_globs": [],
+                    "exclude_matches": [],
+                    "include_globs": metadata['include'],
+                    "js": [filename],
+                    "matches": ["http://*/*", "https://*/*"],
+                    "run_at": "document_idle"
+                })
+
+        with open(os.path.join(extension_dir, "manifest.json"), 'w') as manifest:
+            json.dump(manifest_data, manifest)
+
+        return ["--load-extension=%s" % extension_dir]
+
+
+def parse_userscript_metadata(f):
+    lines = f.readlines()
+    if not re.match(r"^// ==UserScript==", lines[0]):
+        raise ValueError("user script does not start with `// ==UserScript==`")
+    retval = {}
+    for line in lines[1:]:
+        if re.match(r"// ==/UserScript==", line):
+            break
+        match = re.match(r"// @(\S+)\s+(.*)", line)
+        retval.setdefault(match.group(1), []).append(match.group(2))
+
+    return retval
+
+
+def insert_basic_auth(url, filename="/etc/uzblmonitor-auth.json"):
+    try:
+        with open(filename) as f:
+            auth_dict = json.load(f)
+    except IOError as e:
+        log.warning("Caught %s when trying to look up basic auth credentials from %s -- ignoring" % (e, filename))
+        return url
+
+    parsed = list(urlparse.urlsplit(url))
+    hostname = parsed[1]
+
+    for entry in auth_dict['entries']:
+        if hostname == entry['domain']:
+            parsed[1] = '%s:%s@%s' % (entry['username'], entry['password'], parsed[1])
+            return urlparse.urlunsplit(parsed)
+
+    return url
 
 
 def set_up_signal_handlers(browser):
@@ -150,14 +248,59 @@ def set_up_signal_handlers(browser):
     signal.signal(signal.SIGHUP, signal_reload_config)
 
 
+def parse_layout(views, state, x, y, width, height, broadcast=None):
+
+    if broadcast:
+        safe_broadcast = shellquote(broadcast)
+        views.append(ViewAdapter(state={'mode': 'terminal', 'value': 'DISPLAY=:0 textscroll {0}'.format(safe_broadcast)}, x=0, y=0, width=width, height=BROADCAST_HEIGHT))
+
+    if state['mode'] == 'horizontal':
+        x_offset = int(float(state['value'])*width)
+        parse_layout(views, state['children'][0], x, y, x_offset, height)
+        parse_layout(views, state['children'][1], x+x_offset, y, width-x_offset, height)
+    elif state['mode'] == 'vertical':
+        y_offset = int(float(state['value'])*height)
+        parse_layout(views, state['children'][0], x, y, width, y_offset)
+        parse_layout(views, state['children'][1], x, y+y_offset, width, height-y_offset)
+    else:
+        views.append(ViewAdapter(state, x, y, width, height))
+
+def get_emergency_broadcast(broadcast_file='/etc/uzblmonitor-broadcast.json'):
+    with open(broadcast_file) as f:
+        broadcast = f.read().strip()
+    return broadcast
+
+def shellquote(s):
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
 def main():
     logging.basicConfig(level=logging.DEBUG)
 
-    browser = Browser()
-    set_up_signal_handlers(browser)
-    browser.start()
-    browser.wait_for_stop()
+    with open(STATE_FILE) as f:
+        state = json.loads(f.read())
 
+    views = []
+
+    xwininfo_output = subprocess.check_output(['xwininfo', '-root'])
+    (geom_str,) = [l.split(' ')[-1] for l in xwininfo_output.split('\n') if '-geometry ' in l]
+    x, y, width, height = parse_geometry_string(geom_str)
+
+    broadcast = get_emergency_broadcast()
+    if broadcast:
+        y += BROADCAST_HEIGHT
+        height -= BROADCAST_HEIGHT
+
+    parse_layout(views, state, x, y, width, height, broadcast)
+    display = 0
+    for view in views:
+        # If there is no split, we don't need nested X server and can enable fullscreen GPU OpenGL support
+        if len(views) != 1 or broadcast:
+            display += 11
+        view.render(display)
+
+    while True:
+        time.sleep(5)
 
 if __name__ == '__main__':
     main()
