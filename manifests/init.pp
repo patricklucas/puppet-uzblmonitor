@@ -82,6 +82,7 @@ class uzblmonitor(
   }
 
   service { 'nodm-uzblmonitor':
+    enable  => true,
     ensure  => running,
     require => Package['nodm'],
   }
@@ -115,6 +116,7 @@ class uzblmonitor(
     }
   }
   service { 'uzblmonitor':
+    enable  => true,
     ensure  => running,
     require => Service['nodm-uzblmonitor'],
   }
