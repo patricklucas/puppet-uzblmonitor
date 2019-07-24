@@ -1,0 +1,13 @@
+[Unit]
+Description=uzblmonitor service
+After=nodm.service
+
+[Service]
+TimeoutStartSec=20
+Environment="DISPLAY=:0"
+User=monitor
+ExecStart=/usr/bin/uzblmonitor <%= @browser %>
+Restart=always
+
+[Install]
+WantedBy=graphical.target

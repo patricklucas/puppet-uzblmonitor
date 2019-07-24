@@ -58,22 +58,31 @@ class uzblmonitor(
     group  => monitor,
     mode   => '0444',
     source => 'puppet:///modules/uzblmonitor/xsession',
-  } ->
-  file { '/etc/init/nodm-uzblmonitor.conf':
-    ensure => file,
-    owner  => root,
-    group  => root,
-    mode   => '0444',
-    source => 'puppet:///modules/uzblmonitor/nodm-uzblmonitor.conf',
-  } ->
-  file { '/etc/default/nodm-uzblmonitor':
-    ensure => file,
-    owner  => root,
-    group  => root,
-    mode   => '0444',
-    source => 'puppet:///modules/uzblmonitor/nodm-uzblmonitor.default',
-  } ->
+  }
+  if $::systemd {
+    systemd::unit_file { 'nodm-uzblmonitor.service':
+      content =>  template('uzblmonitor/nodm-uzblmonitor.service.erb')
+    }
+  } else {
+
+    file { '/etc/init/nodm-uzblmonitor.conf':
+      ensure => file,
+      owner  => root,
+      group  => root,
+      mode   => '0444',
+      source => 'puppet:///modules/uzblmonitor/nodm-uzblmonitor.conf',
+    } ->
+    file { '/etc/default/nodm-uzblmonitor':
+      ensure => file,
+      owner  => root,
+      group  => root,
+      mode   => '0444',
+      source => 'puppet:///modules/uzblmonitor/nodm-uzblmonitor.default',
+    }
+  }
+
   service { 'nodm-uzblmonitor':
+    enable  => true,
     ensure  => running,
     require => Package['nodm'],
   }
@@ -88,19 +97,26 @@ class uzblmonitor(
     group  => root,
     mode   => '0755',
     source => 'puppet:///modules/uzblmonitor/uzblmonitor',
-  } ->
-  file { '/etc/default/uzblmonitor':
-    content => "BROWSER=${quoted_browser}",
-    notify => Service['uzblmonitor'],
-  } ->
-  file { '/etc/init/uzblmonitor.conf':
-    ensure => file,
-    owner  => root,
-    group  => root,
-    mode   => '0444',
-    source => 'puppet:///modules/uzblmonitor/uzblmonitor.conf',
-  } ->
+  }
+  if $::systemd {
+    systemd::unit_file { 'uzblmonitor.service':
+      content =>  template('uzblmonitor/uzblmonitor.service.erb')
+    }
+  } else {
+    file { '/etc/default/uzblmonitor':
+      content => "BROWSER=${quoted_browser}",
+      notify => Service['uzblmonitor'],
+    } ->
+    file { '/etc/init/uzblmonitor.conf':
+      ensure => file,
+      owner  => root,
+      group  => root,
+      mode   => '0444',
+      source => 'puppet:///modules/uzblmonitor/uzblmonitor.conf',
+    }
+  }
   service { 'uzblmonitor':
+    enable  => true,
     ensure  => running,
     require => Service['nodm-uzblmonitor'],
   }

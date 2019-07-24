@@ -1,0 +1,16 @@
+[Unit]
+Description=Minimal X with no Desktop Manager
+
+[Service]
+TimeoutStartSec=20
+Environment="NODM_ENABLED=true"
+Environment="NODM_USER=monitor"
+Environment="NODM_FIRST_VT=7"
+Environment="NODM_XSESSION=/etc/X11/Xsession"
+Environment="NODM_X_OPTIONS=-nolisten tcp"
+ExecStart=/usr/sbin/nodm
+User=root
+Restart=always
+
+[Install]
+WantedBy=graphical.target
